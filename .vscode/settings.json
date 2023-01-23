@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "exception": "cpp",
+        "iosfwd": "cpp",
+        "limits": "cpp",
+        "streambuf": "cpp",
+        "cerrno": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "enabled"
+}
