@@ -181,16 +181,64 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char * text) {
     }
     // /index.html\0HTTP/1.1
     *m_version++ = '\0';
-    if(strcasecmp(m_version, "Htt\))
+    if(strcasecmp(m_version, "HTTP/1.1") != 0) {
+        return BAD_REQUEST;
+    }
+    //http://192.168.1.18:10000/index.html
+    if(strncasecmp(m_url, "http://", 7) == 0) {
+        m_url += 7;     //192.168.1.18:10000/index.html
+        m_url = strchr(m_url, '/');     //index.html
+    }
+
+    if(!m_url || m_url[0] != '/') {
+        return BAD_REQUEST;
+    }
+
+    m_check_state = CHECK_STATE_HEADER;     //主状态机检查状态变成检查请求头
 
     return NO_REQUEST;
 }
 
 http_conn::HTTP_CODE http_conn::parse_header(char * text) {
+    //遇到空行，表示头部字段解析完毕
+    if(text[0] == '\0') {
+        //如果HTTP请求有消息体，则还需要读取m_content_length字节消息体
+        //状态机转移到CHECK_STATE_CONTENT状态
+        if(m_content_length != 0) {
+            m_check_state = CHECK_STATE_CONTENT;
+            return NO_REQUEST;
+        }
+        //否则说明我们已经得到了一个完整的HTTP请求
+        return GET_REQUEST;
+    } else if(strncasecmp(text, "Connection:", 11) == 0) {
+        //处理Connection头部字段 Connection: keep-alive
+        text += 11;
+        text += strspn(text, " \t");
+        if(strcasecmp(text, "keep-alive") == 0) {
+            m_linger = true;
+        }
+    } else if(strncasecmp(text, "Content-Length:", 15) == 0) {
+        //处理Content-Length头部字段
+        text += 15;
+        text += strspn(text, " \t");
+        m_content_length = atol(text);
+    } else if(strncasecmp(text, "Host:", 5) == 0) {
+        //处理Host头部字段
+        text += 5;
+        text += strspn(text, " \t");
+        m_host = text;
+    } else {
+        printf("opp! unknow header %s\n", text);
+    }
+
     return NO_REQUEST;
 }
 
 http_conn::HTTP_CODE http_conn::parse_content(char * text) {
+    if(m_read_index >= (m_content_length + m_checked_index)) {
+        text[m_content_length] = '\0';
+        return GET_REQUEST;
+    }
     return NO_REQUEST;
 }
 
@@ -223,8 +271,19 @@ http_conn::LINE_STATUS http_conn::parse_line() {
     return LINE_OK;
 }
 
+/*
+当得到一个完整的/正确的HTTP请求时，我们就分析目标文件的属性
+如果目标文件存在/对所有的客户可读，且不是目录，则使用mmap将其
+映射到内存地址m_file_address处，并告诉调用者获取文件
+*/
 http_conn::HTTP_CODE http_conn::do_request() {
-
+    strcpy(m_real_file, doc_root);
+    int len = strlen(doc_root);
+    strncpy(m_real_file + len, m_url, FILENAME_LEN - len -1);
+    //获取m_real_file文件的相关状态信息，-1失败，0成功
+    if(stat(m_real_file, &m_file_stat) < 0) {
+        return NO_RESOURCE;
+    }
 }
 
 bool http_conn::write() {
@@ -245,4 +304,9 @@ void http_conn::process() {
     printf("parse request, create response\n");
 
     //生成响应
+    bool write_ret = process_write(read_ret);
+    if(!write_ret) {
+        close_conn();
+    }
+    modfd(m_epollfd, m_sockfd,EPOLLOUT);
 }
