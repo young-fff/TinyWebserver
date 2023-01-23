@@ -85,6 +85,9 @@ private:
     char * get_line() {return m_read_buf + m_start_line;}
     HTTP_CODE do_request();
 
+    void munmap();
+    bool process_write(HTTP_CODE ret);
+
 private:
    
     int m_sockfd;  // 该HTTP连接的socket
@@ -102,6 +105,10 @@ private:
     bool m_linger;  //  HTTP请求是否保持连接
 
     CHECK_STATE m_check_state;  //主状态机当前所处的状态
+
+    char m_real_file[200];  //客户请求的目标文件的完整路径，其内容等于doc_root + m_url,
+                        // doc_root是网站根目录
+    char * m_file_address;  //客户请求的目标文件被mmap到内存中的起始位置
 };
 
 #endif
