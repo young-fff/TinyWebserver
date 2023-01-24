@@ -22,7 +22,8 @@
 
 class http_conn {
 public:
-    
+    // 文件名的最大长度
+    static const int FILENAME_LEN = 200;
     static int m_epollfd;   //所有的socket上的事件都被注册到同一个epoll
     static int m_user_count;    //统计用户的数量
     static const int READ_BUFFER_SIZE = 2048;   //读缓冲区大小
@@ -75,19 +76,26 @@ public:
 private:
     void init();    //初始化连接其余的信息
 
+    //下面这一组函数被 process_read 调用以分析 HTTP 请求 
     HTTP_CODE process_read();   //解析HTTP请求
     HTTP_CODE parse_request_line(char * text); //解析请求首行
     HTTP_CODE parse_header(char * text);   //解析请求头
     HTTP_CODE parse_content(char * text);   //解析请求体
-
     LINE_STATUS parse_line();
-
     char * get_line() {return m_read_buf + m_start_line;}
     HTTP_CODE do_request();
 
-    void munmap();
+    //下面这一组函数被 process_write 调用以填充 HTTP 应答 
+    void unmap();
     bool process_write(HTTP_CODE ret);
-
+    bool add_response(const char * format, ...);    //往写缓冲写入代发送的数据
+    bool add_content( const char* content );
+    bool add_status_line( int status, const char* title );
+    bool add_headers( int content_length );
+    bool add_content_length( int content_length );
+    bool add_linger();
+    bool add_blank_line();
+    bool add_content_type();
 private:
    
     int m_sockfd;  // 该HTTP连接的socket
@@ -102,13 +110,25 @@ private:
     char * m_version;   //协议版本，只支持HTTP1.1
     METHOD m_method;    //请求方法
     char * m_host;  //主机名
+    /* HTTP 请求的消息体的长度 */
+    int m_content_length;
     bool m_linger;  //  HTTP请求是否保持连接
+
+    /* 写缓冲区 */
+    char m_write_buf[ WRITE_BUFFER_SIZE ];
+    /* 写缓冲区的待发送的字节数*/
+    int m_write_index;
 
     CHECK_STATE m_check_state;  //主状态机当前所处的状态
 
-    char m_real_file[200];  //客户请求的目标文件的完整路径，其内容等于doc_root + m_url,
+    char m_real_file[FILENAME_LEN];  //客户请求的目标文件的完整路径，其内容等于doc_root + m_url,
                         // doc_root是网站根目录
     char * m_file_address;  //客户请求的目标文件被mmap到内存中的起始位置
+    /* 目标文件的状态。通过它我们可以判断文件是否存在、是否为目录、是否可读，并获取文件大小等信息 */
+    struct stat m_file_stat;
+    /* 我们将采用 writev 来执行写操作，所以定义下面两个成员，其中 m_iv_count 表示被写内存块的数量 */
+    struct iovec m_iv[2];
+    int m_iv_count;
 };
 
 #endif

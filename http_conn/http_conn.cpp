@@ -72,14 +72,17 @@ void http_conn::init() {
     m_check_state = CHECK_STATE_REQUESTLINE;    //初始状态为解析请求首行
     m_checked_index = 0;
     m_start_line = 0;
-    m_start_line = 0;
     m_url = 0;
     m_version = 0;
     m_method = GET;
     m_linger = false;
-
-
-    bzero(m_read_buf, READ_BUFFER_SIZE);
+    m_content_length = 0;
+    m_host = 0;
+    m_read_index = 0;
+    m_write_index = 0;
+    memset( m_read_buf, '\0', READ_BUFFER_SIZE );
+    memset( m_write_buf, '\0', WRITE_BUFFER_SIZE );
+    memset(m_real_file, '\0', FILENAME_LEN );
 }
 
 //关闭连接
@@ -295,6 +298,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
     int len = strlen(doc_root);
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len -1);   //将url拼接到资源根目录后
     //获取m_real_file文件的相关状态信息，-1失败，0成功
+    printf("The doc_root is: %s\n", doc_root);
+    printf("The m_real_file is: %s\n", m_real_file);
     if(stat(m_real_file, &m_file_stat) < 0) {
         return NO_RESOURCE;
     }
@@ -328,9 +333,148 @@ void http_conn::unmap() {
 
 
 //写HTTP响应
-bool http_conn::write() {
-    printf("一次性写完数据\n");
+bool http_conn::write()
+{
+    int header_size = m_write_index;
+    int temp = 0;
+    int bytes_have_send = 0;
+    // int bytes_to_send = m_write_idx;
+    int bytes_to_send = m_write_index + m_file_stat.st_size;
+    if (bytes_to_send == 0 )
+    {
+        modfd( m_epollfd, m_sockfd, EPOLLIN );
+        init();
+        return true;
+    }
+
+    // 使用 send
+    // send( m_sockfd, m_write_buf, strlen( m_write_buf ), 0);
+    // send( m_sockfd, m_file_address, strlen( m_file_address ), 0);
+
+    while ( 1 )
+    {
+        //分散写，多块内存数据一起写
+        temp = writev( m_sockfd, m_iv, m_iv_count );
+        printf("write temp : %d\n", temp);
+        if (temp < -1 )
+        {
+            // 这段代码存疑！！！
+            /*如果TCP写缓冲没有空间，则等待下一轮 EPOLLOUT 事件。虽然在此期间，服务器无
+法立即接收到同一客户的下一个请求，但这可以保证连接的完整性*/
+            if ( errno == EAGAIN )
+            {
+                modfd( m_epollfd, m_sockfd, EPOLLOUT );
+                return true;
+            }
+            unmap();
+            return false;
+        }
+
+        if (temp == -1) {
+            /* 发送过快 */
+            printf("errno : %d", errno);
+            sleep(0.8);
+            continue;
+        }
+        
+        /* 发送成功，需要重新配置 待发送区域 */
+        bytes_to_send -= temp;
+        bytes_have_send += temp;
+        if ( bytes_to_send <= 0 )
+        {
+            /* bytes_to_send 为 0 ，已经发送完毕 */
+            /* 发送 HTTP 响应成功，根据 HTTP 请求中的 Connection 字段决定是否立即关闭连接 */
+            unmap();
+            if ( m_linger )
+            {
+                init();
+                modfd( m_epollfd, m_sockfd, EPOLLIN );
+                printf("Sending done with true!\n");
+                return true;
+            }
+            else
+            {
+                modfd( m_epollfd, m_sockfd, EPOLLIN);
+                printf("Sending done with false!");
+                return false;
+            }
+        }
+        else if (bytes_to_send > 0) {
+            /* 仍有待发送数据 */
+            /* 重新装配数据 */
+
+            /* 需要比较已发送数据字节数 与 headers 占据数据字节数 */
+            if (bytes_have_send < header_size) {
+                /* headers 未发送完毕 */
+                m_iv[0].iov_base = m_write_buf + bytes_have_send;
+                m_iv[0].iov_len = m_write_index - bytes_have_send;
+                m_iv[1].iov_base = m_file_address;
+                m_iv[1].iov_len = m_file_stat.st_size;
+                m_iv_count = 2;
+            }
+            else {
+                /* headers 已经发送完毕 */
+                m_iv[0].iov_base = m_file_address + bytes_have_send - header_size;
+                m_iv[0].iov_len = m_file_stat.st_size - bytes_have_send + header_size;
+                m_iv_count = 1;
+            }
+        }
+    }
+}
+
+//往写缓冲写入代发送的数据
+bool http_conn::add_response(const char * format, ...) {
+    if(m_write_index >= WRITE_BUFFER_SIZE) {
+        return false;
+    }
+    //把数据写入写缓冲区
+    va_list arg_list;
+    va_start(arg_list, format);
+    int len = vsnprintf(m_write_buf + m_write_index, WRITE_BUFFER_SIZE - 1 - m_write_index, format, arg_list);
+    if (len >= WRITE_BUFFER_SIZE - 1 - m_write_index) 
+        return false;
+    m_write_index += len;
+    va_end(arg_list);
     return true;
+}   
+
+
+bool http_conn::add_status_line( int status, const char* title)
+{
+    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
+}
+
+bool http_conn::add_headers( int content_len )
+{
+    add_content_length(content_len);
+    add_content_type();
+    add_linger();
+    add_blank_line();
+}
+
+bool http_conn::add_content_length( int content_len )
+{
+    return add_response("Content-Length: %d\r\n", content_len);
+}
+
+bool http_conn::add_linger()
+{
+    return add_response("Connection: %s\r\n", m_linger == true ? "keep-alive" : "close");
+}
+
+bool http_conn::add_blank_line()
+{
+    return add_response("%s", "\r\n");
+}
+
+bool http_conn::add_content( const char* content)
+{
+    return add_response("%s", content);
+}
+
+bool http_conn::add_content_type()
+{
+    return add_response("Content-Type: %s\r\n", "text/html");
 }
 
 bool http_conn::process_write(HTTP_CODE ret) {
@@ -372,7 +516,39 @@ bool http_conn::process_write(HTTP_CODE ret) {
             }
             break;
         }
+        case FILE_REQUEST:
+            {
+                add_status_line(200, ok_200_title);
+                if (m_file_stat.st_size != 0)
+                {
+                    add_headers(m_file_stat.st_size);
+                    m_iv[0].iov_base = m_write_buf;
+                    m_iv[0].iov_len = m_write_index;
+                    m_iv[1].iov_base = m_file_address;
+                    m_iv[1].iov_len = m_file_stat.st_size;
+                    m_iv_count = 2;
+                    return true;
+                }
+                else
+                {
+                    const char* ok_string = "<html><body></body></html>";
+                    add_headers(strlen(ok_string));
+                    if (!add_content(ok_string))
+                    {
+                        return false;
+                    }
+                }
+            }
+        default:
+        {
+            return false;
+        }
     }
+
+    m_iv[0].iov_base = m_write_buf;
+    m_iv[0].iov_len = m_write_index;
+    m_iv_count = 1;
+    return true;
 }
 
 
