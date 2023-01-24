@@ -114,11 +114,13 @@ int main(int argc, char* argv[]) {
                 //对方异常断开或者错误等事件
                 users[sockfd].close_conn();
             } else if(events[i].events & EPOLLIN) {
-                printf("read now\n");
+                printf("\nread now\n");
                 if(users[sockfd].read()) {
                     //一次性把所有数据都读完
+                    //printf("append\n");
                     pool -> append(users + sockfd);
                 } else {
+                    //printf("append\n");
                     users[sockfd].close_conn();
                 }
             } else if(events[i].events & EPOLLOUT) {

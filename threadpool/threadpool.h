@@ -89,6 +89,7 @@ bool threadpool<T>::append(T * request) {
         m_queuelocker.unlock();
         return false;
     }
+    //printf("push in workqueue\n");
     m_workqueue.push_back(request);
     m_queuelocker.unlock();
     m_queuestat.post(); 
@@ -120,7 +121,7 @@ void threadpool<T>::run() {
         if(!request) {
             continue;
         }
-
+        //printf("process\n");
         request -> process();
     }
 }

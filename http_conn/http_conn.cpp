@@ -118,7 +118,7 @@ bool http_conn::read() {
         }
         m_read_index += bytes_read;
     }
-    printf("读取到了数据:\n %s\n", m_read_buf);
+    printf("读取到了数据:\n%s", m_read_buf);
     return true;
 }
 
@@ -130,19 +130,22 @@ http_conn::HTTP_CODE http_conn::process_read() {
 
     char * text = 0;
 
-    while((((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) 
-    || (line_status = parse_line()) == LINE_OK)) {
+    while(((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) 
+    || ((line_status = parse_line()) == LINE_OK)) {
+        //printf("*****\n");
         //解析到了一行完整的数据，或者解析到了请求体
         text = get_line();
 
         m_start_line = m_checked_index;
-        printf("got 1 http line : %s\n", text);
-
+        //printf( "from %s:%d got 1 http line: %s\n", inet_ntoa(m_address.sin_addr), ntohs(m_address.sin_port), text );
+        //printf("got 1 http line : %s\n", text);
+        //printf("****check_state: %d****\n", m_check_state);
         switch(m_check_state) {
             case CHECK_STATE_REQUESTLINE:
             {
                 ret = parse_request_line(text);
                 if(ret == BAD_REQUEST) {
+                    printf("****request error****\n");
                     return BAD_REQUEST;
                 }
                 break;
@@ -151,8 +154,10 @@ http_conn::HTTP_CODE http_conn::process_read() {
             {
                 ret = parse_header(text);
                 if(ret == BAD_REQUEST) {
+                    printf("****header error****\n");
                     return BAD_REQUEST;
                 } else if(ret == GET_REQUEST) {
+                    printf("****GET header****\n");
                     return do_request();
                 }
                 break;
@@ -162,6 +167,7 @@ http_conn::HTTP_CODE http_conn::process_read() {
             {
                 ret = parse_content(text);
                 if(ret == GET_REQUEST) {
+                    printf("****GET content****\n");
                     return do_request();
                 }
                 line_status = LINE_OPEN;
@@ -172,16 +178,16 @@ http_conn::HTTP_CODE http_conn::process_read() {
                 return INTERNAL_ERROR;
             }
         }
-        return NO_REQUEST;
     }
-
     return NO_REQUEST;
 } 
 
 //解析HP请求行，获得请求方法，目标URL，HTTP版本
 http_conn::HTTP_CODE http_conn::parse_request_line(char * text) {
+   
     //GET /index.html HTTP/1.1
     m_url = strpbrk(text, " \t");
+    *m_url++ = '\0';
 
     //GET \0/index.html HTTP/1.1
     char * method = text;
@@ -198,21 +204,43 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char * text) {
     }
     // /index.html\0HTTP/1.1
     *m_version++ = '\0';
+  /*   
+    m_url = strpbrk(text, " \t");
+    if (!m_url) return BAD_REQUEST;
+    *m_url++ = '\0';
+
+    char* method = text;
+    if (strcasecmp(method, "GET") == 0) m_method = GET;
+    else return BAD_REQUEST;
+
+    m_url += strspn(m_url, " \t");
+    m_version = strpbrk(m_url, " \t");
+    if (!m_version) return BAD_REQUEST;
+    *m_version++ = '\0';
+    m_version += strspn(m_version, " \t");
+*/
     if(strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
     //http://192.168.1.18:10000/index.html
     if(strncasecmp(m_url, "http://", 7) == 0) {
+
+        printf("m_url : %s\n", m_url);
         m_url += 7;     //192.168.1.18:10000/index.html
+
+        
+        printf("m_url : %s\n", m_url);
         m_url = strchr(m_url, '/');     //index.html
     }
-
+    
     if(!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
     }
 
     m_check_state = CHECK_STATE_HEADER;     //主状态机检查状态变成检查请求头
-
+    
+    //printf("m_url : %s\n", m_url);
+    //printf("*****2\n");
     return NO_REQUEST;
 }
 
@@ -245,7 +273,7 @@ http_conn::HTTP_CODE http_conn::parse_header(char * text) {
         text += strspn(text, " \t");
         m_host = text;
     } else {
-        printf("opp! unknow header %s\n", text);
+        //printf("oop! unknow header : %s\n", text);
     }
 
     return NO_REQUEST;
@@ -261,31 +289,40 @@ http_conn::HTTP_CODE http_conn::parse_content(char * text) {
 
 //解析一行，判断依据\r\n
 http_conn::LINE_STATUS http_conn::parse_line() {
+    //printf("parse_line\n");
     char temp;
     for( ; m_checked_index < m_read_index; ++m_checked_index) {
         temp = m_read_buf[m_checked_index];
         if(temp == '\r') {
             if(m_checked_index + 1 == m_read_index) {
+                //printf("LINE_OPEN\n");
                 return LINE_OPEN;
             } else if(m_read_buf[m_checked_index + 1] == '\n') {
                 m_read_buf[m_checked_index++] = '\0';
                 m_read_buf[m_checked_index++] = '\0';
+                //printf("LINE_OK\n");
                 return LINE_OK;
             }
             return LINE_BAD;
         } else if(temp == '\n') {
-            if(m_checked_index > 1 && m_read_buf[m_checked_index - 1] == '\r') {
+            if((m_checked_index > 1) && (m_read_buf[m_checked_index - 1] == '\r')) {
                 m_read_buf[m_checked_index - 1] = '\0';
                 m_read_buf[m_checked_index++] = '\0';
+
+                //printf("LINE_OK2\n");
                 return LINE_OK;
             }
+
+            //printf("LINE_BAD\n");
             return LINE_BAD;
         }
-        return LINE_OPEN;
+        //printf("LINE_OPEN2\n");
+        //return LINE_OPEN;
     }
-
-
-    return LINE_OK;
+    //printf("LINE_OK3\n");
+    //return LINE_OK;
+    //printf("LINE_OPEN2\n");
+    return LINE_OPEN;
 }
 
 /*
@@ -372,8 +409,8 @@ bool http_conn::write()
 
         if (temp == -1) {
             /* 发送过快 */
-            printf("errno : %d", errno);
-            sleep(0.8);
+            printf("errno : %d\n", errno);
+            sleep(3);
             continue;
         }
         
@@ -389,13 +426,13 @@ bool http_conn::write()
             {
                 init();
                 modfd( m_epollfd, m_sockfd, EPOLLIN );
-                printf("Sending done with true!\n");
+                printf("Sending done with true!\n\n");
                 return true;
             }
             else
             {
                 modfd( m_epollfd, m_sockfd, EPOLLIN);
-                printf("Sending done with false!");
+                printf("Sending done with false!\n\n");
                 return false;
             }
         }
@@ -491,6 +528,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
         }
         case BAD_REQUEST:
         {
+           //printf("****BAD_REQUEST****\n");
             add_status_line(400, error_400_title);
             add_headers(strlen(error_400_form));
             if(!add_content(error_400_form)) {
@@ -554,14 +592,16 @@ bool http_conn::process_write(HTTP_CODE ret) {
 
 //由线程池中的工作线程调用，是处理HTTP请求的入口函数
 void http_conn::process() {
+    //printf("parse request, create response\n");
     //解析HTTP请求
     HTTP_CODE read_ret =  process_read();
     if(read_ret == NO_REQUEST) {
+        //printf("NO_REQUEST\n");
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
     }
 
-    //printf("parse request, create response\n");
+    
 
     //生成响应
     bool write_ret = process_write(read_ret);
