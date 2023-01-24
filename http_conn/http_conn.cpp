@@ -15,7 +15,7 @@ int http_conn::m_epollfd = -1;
 int http_conn::m_user_count = 0;   
 
 //网站根目录
-const char* doc_root = "/home/youngff/program/websever/resources";
+const char* doc_root = "/home/youngff/program/websever/resources/daohang";
 
 //设置文件描述符非阻塞
 void setnonblocking(int fd) {
@@ -28,7 +28,7 @@ void setnonblocking(int fd) {
 void addfd(int epollfd, int fd, bool one_shot) {
     epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET | EPOLLRDHUP; 
+    event.events = EPOLLIN | EPOLLRDHUP;  //EPOLLET |
 
     if(one_shot) {
         event.events |= EPOLLONESHOT;
@@ -410,7 +410,7 @@ bool http_conn::write()
         if (temp == -1) {
             /* 发送过快 */
             printf("errno : %d\n", errno);
-            sleep(3);
+            sleep(1);
             continue;
         }
         
