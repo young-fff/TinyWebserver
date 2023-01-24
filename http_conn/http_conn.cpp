@@ -393,13 +393,12 @@ bool http_conn::write()
         //分散写，多块内存数据一起写
         temp = writev( m_sockfd, m_iv, m_iv_count );
         printf("write temp : %d\n", temp);
-        if (temp < -1 )
-        {
+        if (temp <= -1 ) {
             // 这段代码存疑！！！
             /*如果TCP写缓冲没有空间，则等待下一轮 EPOLLOUT 事件。虽然在此期间，服务器无
 法立即接收到同一客户的下一个请求，但这可以保证连接的完整性*/
-            if ( errno == EAGAIN )
-            {
+            if ( errno == EAGAIN ) {
+                printf("****oo****\n");
                 modfd( m_epollfd, m_sockfd, EPOLLOUT );
                 return true;
             }
@@ -407,13 +406,6 @@ bool http_conn::write()
             return false;
         }
 
-        if (temp == -1) {
-            /* 发送过快 */
-            printf("errno : %d\n", errno);
-            sleep(1);
-            continue;
-        }
-        
         /* 发送成功，需要重新配置 待发送区域 */
         bytes_to_send -= temp;
         bytes_have_send += temp;
