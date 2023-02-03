@@ -1,5 +1,7 @@
 #include "http_conn.h"
 
+
+class util_timer;   // 前向声明
 //定义HTTP响应的一些状态信息
 const char* ok_200_title = "OK";
 const char* error_400_title = "Bad Request";
@@ -16,6 +18,7 @@ int http_conn::m_user_count = 0;
 
 //网站根目录
 const char* doc_root = "/home/youngff/program/websever/resources/daohang";
+
 
 //设置文件描述符非阻塞
 void setnonblocking(int fd) {
@@ -88,7 +91,7 @@ void http_conn::init() {
 //关闭连接
 void http_conn::close_conn() {
     if(m_sockfd != -1) {
-        //printf("CLOSE NOW");
+        printf("CLOSE NOW\n");
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
         m_user_count--; //关闭一个连接，总用户数减1

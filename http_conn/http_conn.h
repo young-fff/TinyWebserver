@@ -20,6 +20,10 @@
 #include <errno.h>
 #include <string.h>
 
+#include "../noactive/lst_timer.h"
+
+class util_timer;
+
 class http_conn {
 public:
     // 文件名的最大长度
@@ -129,6 +133,9 @@ private:
     /* 我们将采用 writev 来执行写操作，所以定义下面两个成员，其中 m_iv_count 表示被写内存块的数量 */
     struct iovec m_iv[2];
     int m_iv_count;
+
+public:
+    util_timer* timer;          // 定时器
 };
 
 #endif

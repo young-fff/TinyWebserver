@@ -12,8 +12,12 @@
 #include <stdlib.h>
 #include <sys/epoll.h>
 #include <pthread.h>
-#include "lst_timer.h"
-#include "../http_conn/http_conn.h"
+#include <iostream>
+
+#include "noactive/lst_timer.h"
+#include "http_conn/http_conn.h"
+#include "locker/locker.h"
+#include "threadpool/threadpool.h"
 
 #define FD_LIMIT 65535
 #define MAX_EVENT_NUMBER 1024
@@ -23,6 +27,9 @@ static int pipefd[2];
 static sort_timer_lst timer_lst;
 static int epollfd = 0;
 
+void setnonblocking(int fd);
+void addfd(int epollfd, int fd, bool one_shot);
+/*
 int setnonblocking( int fd )
 {
     int old_option = fcntl( fd, F_GETFL );
@@ -39,7 +46,7 @@ void addfd( int epollfd, int fd )
     epoll_ctl( epollfd, EPOLL_CTL_ADD, fd, &event );
     setnonblocking( fd );
 }
-
+*/
 void sig_handler( int sig )
 {
     int save_errno = errno;
@@ -67,13 +74,16 @@ void timer_handler()
 }
 
 // 定时器回调函数，它删除非活动连接socket上的注册事件，并关闭之。
-void cb_func( client_data* user_data )
+/*void cb_func( client_data* user_data )
 {
     epoll_ctl( epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0 );
     assert( user_data );
     close( user_data->sockfd );
-    //http_conn::m_user_count--;
     printf( "close fd %d\n", user_data->sockfd );
+}
+*/
+void cb_func( http_conn* user_data ) {
+    user_data->close_conn();
 }
 
 int main( int argc, char* argv[] ) {
@@ -82,6 +92,14 @@ int main( int argc, char* argv[] ) {
         return 1;
     }
     int port = atoi( argv[1] );
+
+    //创建线程池，初始化线程池
+    threadpool<http_conn> * pool = NULL;
+    try{
+        pool = new threadpool<http_conn>;
+    } catch(...) {
+        exit(-1);
+    }
 
     int ret = 0;
     struct sockaddr_in address;
@@ -93,6 +111,11 @@ int main( int argc, char* argv[] ) {
     int listenfd = socket( PF_INET, SOCK_STREAM, 0 );
     assert( listenfd >= 0 );
 
+    //设置端口复用
+    int reuse = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+
     ret = bind( listenfd, ( struct sockaddr* )&address, sizeof( address ) );
     assert( ret != -1 );
 
@@ -102,20 +125,30 @@ int main( int argc, char* argv[] ) {
     epoll_event events[ MAX_EVENT_NUMBER ];
     int epollfd = epoll_create( 5 );
     assert( epollfd != -1 );
-    addfd( epollfd, listenfd );
+
+    //addfd( epollfd, listenfd );
+
+    //将监听的文件描述符添加到epoll对象中
+    addfd(epollfd, listenfd, false);
+    http_conn::m_epollfd = epollfd;
 
     // 创建管道
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
     assert( ret != -1 );
     setnonblocking( pipefd[1] );
-    addfd( epollfd, pipefd[0] );
+
+    //addfd( epollfd, pipefd[0] );
+
+    addfd( epollfd, pipefd[0] ,false);
 
     // 设置信号处理函数
     addsig( SIGALRM );
     addsig( SIGTERM );
     bool stop_server = false;
 
-    client_data* users = new client_data[FD_LIMIT]; 
+    //创建数组用于保存所有的客户端信息
+    http_conn * users = new http_conn[FD_LIMIT];
+    //client_data* users = new client_data[FD_LIMIT]; 
     bool timeout = false;
     alarm(TIMESLOT);  // 定时,5秒后产生SIGALARM信号
 
@@ -134,9 +167,21 @@ int main( int argc, char* argv[] ) {
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof( client_address );
                 int connfd = accept( listenfd, ( struct sockaddr* )&client_address, &client_addrlength );
-                addfd( epollfd, connfd );
-                users[connfd].address = client_address;
-                users[connfd].sockfd = connfd;
+                addfd( epollfd, connfd ,true);
+
+                if(http_conn::m_user_count >= FD_LIMIT) {
+                    //目前连接数满了
+                    //需要给客户端回复:服务器正忙
+                    //printf("Already Full!\n");
+                    close(connfd);
+                    continue;
+                }
+                //addfd( epollfd, connfd)
+                
+                //将新的客户数据初始化,放到数组中
+                users[connfd].init(connfd, client_address);
+                //users[connfd].address = client_address;
+                //users[connfd].sockfd = connfd;
                 
                 // 创建定时器，设置其回调函数与超时时间，然后绑定定时器与用户数据，最后将定时器添加到链表timer_lst中
                 util_timer* timer = new util_timer;
@@ -146,6 +191,9 @@ int main( int argc, char* argv[] ) {
                 timer->expire = cur + 3 * TIMESLOT;
                 users[connfd].timer = timer;
                 timer_lst.add_timer( timer );
+            } else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+                //对方异常断开或者错误等事件
+                users[sockfd].close_conn();
             } else if( ( sockfd == pipefd[0] ) && ( events[i].events & EPOLLIN ) ) {
                 // 处理信号
                 int sig;
@@ -172,9 +220,26 @@ int main( int argc, char* argv[] ) {
                         }
                     }
                 }
-            }
-            else if(  events[i].events & EPOLLIN )
-            {
+            } else if(  events[i].events & EPOLLIN )
+            {   
+                printf("\nread now\n");
+                util_timer* timer = users[sockfd].timer;
+                if(users[sockfd].read()) {
+                    //一次性把所有数据都读完
+                    //printf("append\n");
+                    if( timer ) {
+                        time_t cur = time( NULL );
+                        timer->expire = cur + 3 * TIMESLOT;
+                        printf( "adjust timer once\n" );
+                        timer_lst.adjust_timer( timer );
+                    }
+                    pool -> append(users + sockfd);
+                } else {
+                    printf("----read error-----\n");
+                    users[sockfd].close_conn();
+                    timer_lst.del_timer( timer );
+                }
+                /*
                 memset( users[sockfd].buf, '\0', BUFFER_SIZE );
                 ret = recv( sockfd, users[sockfd].buf, BUFFER_SIZE-1, 0 );
                 printf( "get %d bytes of client data %s from %d\n", ret, users[sockfd].buf, sockfd );
@@ -210,13 +275,20 @@ int main( int argc, char* argv[] ) {
                         timer_lst.adjust_timer( timer );
                     }
                 }
+                */
+            } else if(events[i].events & EPOLLOUT) {
+                printf("write now\n");
+                if(!users[sockfd].write()) {
+                    users[sockfd].close_conn();
+                    //timer_lst.del_timer( timer );
+                }
             }
-           
         }
 
         // 最后处理定时事件，因为I/O事件有更高的优先级。当然，这样做将导致定时任务不能精准的按照预定的时间执行。
         if( timeout ) {
             timer_handler();
+            //std::cout << " -----time out-----" << std::endl;
             timeout = false;
         }
     }

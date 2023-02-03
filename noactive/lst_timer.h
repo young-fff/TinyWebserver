@@ -4,10 +4,11 @@
 #include <stdio.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include "../http_conn/http_conn.h"
 
 #define BUFFER_SIZE 64
-class util_timer;   // 前向声明
-
+class http_conn;   // 前向声明
+/*
 // 用户数据结构
 struct client_data
 {
@@ -16,7 +17,7 @@ struct client_data
     char buf[ BUFFER_SIZE ];    // 读缓存
     util_timer* timer;          // 定时器
 };
-
+*/
 // 定时器类
 class util_timer {
 public:
@@ -24,8 +25,10 @@ public:
 
 public:
    time_t expire;   // 任务超时时间，这里使用绝对时间
-   void (*cb_func)( client_data* ); // 任务回调函数，回调函数处理的客户数据，由定时器的执行者传递给回调函数
-   client_data* user_data; 
+   void (*cb_func)( http_conn* );
+   //void (*cb_func)( client_data* ); // 任务回调函数，回调函数处理的客户数据，由定时器的执行者传递给回调函数
+   http_conn* user_data;
+   //client_data* user_data; 
    util_timer* prev;    // 指向前一个定时器
    util_timer* next;    // 指向后一个定时器
 };
@@ -185,5 +188,6 @@ private:
     util_timer* head;   // 头结点
     util_timer* tail;   // 尾结点
 };
+
 
 #endif
