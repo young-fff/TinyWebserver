@@ -71,22 +71,19 @@ public:
     ~http_conn(){}
 
     //处理客户端请求
-    void process();
-    void init(int sockfd, const sockaddr_in & addr);
+    void process();//响应请求（拼接响应）。
+    void init(int sockfd, const sockaddr_in & addr);//初始化新接收的连接
     void close_conn();  //关闭连接
     bool read();    //非阻塞的读
     bool write();   //非阻塞的写
 
-private:
-    void init();    //初始化连接其余的信息
-
     //下面这一组函数被 process_read 调用以分析 HTTP 请求 
-    HTTP_CODE process_read();   //解析HTTP请求
+    HTTP_CODE process_read();   //解析HTTP请求,里面交给具体下面的某一个
     HTTP_CODE parse_request_line(char * text); //解析请求首行
     HTTP_CODE parse_header(char * text);   //解析请求头
     HTTP_CODE parse_content(char * text);   //解析请求体
-    LINE_STATUS parse_line();
-    char * get_line() {return m_read_buf + m_start_line;}
+    LINE_STATUS parse_line();   //解析某一行
+    char * get_line() {return m_read_buf + m_start_line;}   //获取一行数据
     HTTP_CODE do_request();
 
     //下面这一组函数被 process_write 调用以填充 HTTP 应答 
@@ -100,6 +97,11 @@ private:
     bool add_linger();
     bool add_blank_line();
     bool add_content_type();
+
+    int getfd();
+
+    util_timer* timer;          // 定时器
+
 private:
    
     int m_sockfd;  // 该HTTP连接的socket
@@ -110,23 +112,18 @@ private:
     int m_checked_index;   //当前正在分析的字符在读缓冲区的位置 
     int m_start_line;   //当前正在解析的行的起始位置
 
+    char m_real_file[FILENAME_LEN];  //客户请求的目标文件的完整路径
     char * m_url;   //请求目标文件的文件名
     char * m_version;   //协议版本，只支持HTTP1.1
     METHOD m_method;    //请求方法
     char * m_host;  //主机名
-    /* HTTP 请求的消息体的长度 */
-    int m_content_length;
+    int m_content_length;   //HTTP 请求的消息体的长度
     bool m_linger;  //  HTTP请求是否保持连接
-
-    /* 写缓冲区 */
-    char m_write_buf[ WRITE_BUFFER_SIZE ];
-    /* 写缓冲区的待发送的字节数*/
-    int m_write_index;
 
     CHECK_STATE m_check_state;  //主状态机当前所处的状态
 
-    char m_real_file[FILENAME_LEN];  //客户请求的目标文件的完整路径，其内容等于doc_root + m_url,
-                        // doc_root是网站根目录
+    char m_write_buf[ WRITE_BUFFER_SIZE ];  //写缓冲区
+    int m_write_index;  //写缓冲区的待发送的字节数
     char * m_file_address;  //客户请求的目标文件被mmap到内存中的起始位置
     /* 目标文件的状态。通过它我们可以判断文件是否存在、是否为目录、是否可读，并获取文件大小等信息 */
     struct stat m_file_stat;
@@ -134,8 +131,11 @@ private:
     struct iovec m_iv[2];
     int m_iv_count;
 
-public:
-    util_timer* timer;          // 定时器
+
+    int bytes_to_send;              // 将要发送的数据的字节数
+    int bytes_have_send;            // 已经发送的字节数
+
+    void init();    //初始化连接其余的信息
 };
 
 #endif
