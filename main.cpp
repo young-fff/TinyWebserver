@@ -14,7 +14,7 @@
 #include <pthread.h>
 #include <iostream>
 
-#include "noactive/lst_timer.h"
+#include "timer/lst_timer.h"
 #include "http_conn/http_conn.h"
 #include "locker/locker.h"
 #include "threadpool/threadpool.h"

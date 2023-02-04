@@ -17,7 +17,7 @@ int http_conn::m_epollfd = -1;  //所有socket上的事件，都被注册到同�
 int http_conn::m_user_count = 0;   //统计用户数量
 
 //网站根目录
-const char* doc_root = "/home/youngff/program/websever/resources/daohang";
+const char* doc_root = "/home/youngff/program/websever/resources";
 
 
 //设置文件描述符非阻塞

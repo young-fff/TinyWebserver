@@ -20,7 +20,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "../noactive/lst_timer.h"
+#include "../timer/lst_timer.h"
 
 class util_timer;
 
