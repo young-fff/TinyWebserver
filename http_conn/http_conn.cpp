@@ -102,7 +102,7 @@ void http_conn::init() {
     m_read_index = 0;   // 读的
     m_write_index = 0;
     //缓冲区置0
-    memset( m_read_buf, '\0', READ_BUFFER_SIZE );
+    memset( m_read_buf, '\0', READ_BUFFER_SIZE ); 
     memset( m_write_buf, '\0', WRITE_BUFFER_SIZE );
     memset(m_real_file, '\0', FILENAME_LEN );
 }
