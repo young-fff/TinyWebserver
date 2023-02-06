@@ -1,5 +1,16 @@
-# TinyWebserver
+# Webserver
 A tiny webserver for HTTP
+* 代码几乎每个模块都有详细的注释，适合初学者学习网络编程学习
+
+## 项目目的
+在学习了《C++ Primer》、《Effevtive C++》、《mysql必知必会》、《计算机网络自顶向下方法》、《Linux高性能服务器编程》等书后，想通过该项目理解书里的知识，包括
+* C/C++语法
+* TCP、HTTP协议
+* 多进程多线程编程
+* 网络编程
+* Linux环境下各种工具的使用
+* Makefile文件的编写
+* mysql使用方法
 
 ## 开发环境
 - 操作系统：Ubuntu 22.04
@@ -13,7 +24,7 @@ A tiny webserver for HTTP
 * 使用了互斥锁及条件变量用于线程控制
 * 使用了主从状态机解析HTTP请求
 * 使用了双向升序链表定时器剔除非活动连接客户
-* 使用单例模式实现mysql连接池
+* 使用单例模式和智能指针实现mysql连接池
 * 内置基于跳表的kv存储引擎
 
 
@@ -79,7 +90,8 @@ http://(本地Ip地址):10000/index.html
 │   ├── img
 │   ├── js
 │   └── css
-├── mysql_conn     数据库部分
+|
+├── mysql_conn          mysql数据库部分
 │   ├── conn_pool.cpp   conn_pool类实现
 │   ├── conn_pool.h     conn_pool类
 │   ├── mysql_conn.cpp  mysql_conn类实现
@@ -88,6 +100,14 @@ http://(本地Ip地址):10000/index.html
 │   ├── main.cpp        测试程序
 │   └── Makefile        
 |
+├── skiplist_kv         跳表kv存储部分
+│   ├── bin             可执行文件
+│   ├── src             skiplist具体实现
+│   ├── store           数据落盘文件
+│   ├── stress-test     压测程序
+│   ├── Makefile
+│   └── README.md
+|  
 ├── threadpool      线程池部分
 │   └── threadpool.h    thread_pool类实现
 |
@@ -104,3 +124,10 @@ http://(本地Ip地址):10000/index.html
 |
 └── README.md       
 ```
+
+
+
+## TODO
+* 实现登录功能
+* Log日志系统
+* 跳表数据库连接
