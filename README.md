@@ -81,10 +81,10 @@ http://(本地Ip地址):10000/index.html
 │   ├── http_conn.h     http_conn类
 │   └── http_conn.cpp   http_conn类实现
 |
-├── locker          锁部分
+├── locker              锁部分
 │   └── locker.h        locker类实现
 |
-├── resources      静态资源
+├── resources           静态资源
 │   ├── index.html
 │   ├── test.html
 │   ├── img
@@ -108,19 +108,19 @@ http://(本地Ip地址):10000/index.html
 │   ├── Makefile
 │   └── README.md
 |  
-├── threadpool      线程池部分
+├── threadpool          线程池部分
 │   └── threadpool.h    thread_pool类实现
 |
-├── webbench-1.5   压力测试
+├── webbench-1.5        压力测试
 |
-├── timer          定时器部分
+├── timer               定时器部分
 │   └── lst_timer.h     util_timer类,sort_timer_lst 类实现
 |
 ├── Makefile
 |
-├── main_notimer.cpp   无定时器版本
+├── main_notimer.cpp    无定时器版本
 |
-├── main.cpp        定时器版本
+├── main.cpp            定时器版本
 |
 └── README.md       
 ```
