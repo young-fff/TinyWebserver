@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <thread>
 #include "mysql_conn.h"
 #include "conn_pool.h"
 
@@ -48,6 +49,43 @@ void test2() {
     cout << "连接池,单线程,用时" << length.count() / 1000000 << " ms" << endl;
 }
 
+//非连接池,多线程,5000次用时46967 ms
+void test3() {
+    steady_clock::time_point begin = steady_clock::now();
+    thread t1(op1, 0, 1000);
+    thread t2(op1, 1000, 2000);
+    thread t3(op1, 2000, 3000);
+    thread t4(op1, 3000, 4000);
+    thread t5(op1, 4000, 5000);
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+    steady_clock::time_point end = steady_clock::now();
+    auto length = end - begin;
+    cout << "非连接池,多线程,用时" << length.count() / 1000000 << " ms" << endl;
+}
+
+//连接池,多线程,5000次用时5175 ms
+void test4() {
+    conn_pool* pool = conn_pool::getConnectPool();
+    steady_clock::time_point begin = steady_clock::now();
+    thread t1(op2, pool, 0, 1000);
+    thread t2(op2, pool, 1000, 2000);
+    thread t3(op2, pool, 2000, 3000);
+    thread t4(op2, pool, 3000, 4000);
+    thread t5(op2, pool, 4000, 5000);
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+    steady_clock::time_point end = steady_clock::now();
+    auto length = end - begin;
+    cout << "连接池,多线程,用时" << length.count() / 1000000 << " ms" << endl;
+}
+
 int query() {
     mysql_conn conn;
     bool ret1 = conn.connnect("xxs", "password", "testdb", "127.0.0.1", 3306);
@@ -69,6 +107,6 @@ int query() {
 
 int main() {
     //query();
-    test1();
+    test4();
     return 0;
 }
